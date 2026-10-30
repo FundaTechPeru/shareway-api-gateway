@@ -60,9 +60,9 @@ describe('resilience', () => {
         .set('Authorization', bearer());
       statuses.push(response.status);
     }
-    // The monolith serves every context left in it, so its circuit covers all of them.
+    // The monolith serves every path of the context left in it, so its circuit covers all of them.
     const open = await request(app)
-      .get('/api/v1/trip-requests')
+      .get('/api/v1/fare-rules')
       .set('Authorization', bearer());
     const health = await request(app).get('/health');
 
@@ -70,7 +70,7 @@ describe('resilience', () => {
     expect(open.status).toBe(503);
     expect(open.headers['retry-after']).toBe('60');
     expect(open.body.message).toBe(
-      'Trip Planning & Matching is temporarily unavailable',
+      'Booking & Pricing is temporarily unavailable',
     );
     expect(health.body.services['booking-pricing']).toBe('OPEN');
   });

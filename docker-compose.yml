@@ -1,7 +1,7 @@
 # Local environment of the Strangler Fig setup: PostgreSQL, the monolith, the extracted services
 # and the gateway in front on http://localhost:8000. Each one is built from a clone next to this
-# repository (change MONOLITH_CONTEXT, DRIVER_MANAGEMENT_CONTEXT or PAYMENTS_SETTLEMENT_CONTEXT
-# otherwise) and is only reachable through the gateway.
+# repository (change MONOLITH_CONTEXT, DRIVER_MANAGEMENT_CONTEXT, PAYMENTS_SETTLEMENT_CONTEXT or
+# TRIP_PLANNING_MATCHING_CONTEXT otherwise) and is only reachable through the gateway.
 # Copy .env.example to .env and set the secrets before running: docker compose up --build
 services:
   postgres:
@@ -25,6 +25,8 @@ services:
         condition: service_healthy
       payments-settlement:
         condition: service_started
+      trip-planning-matching:
+        condition: service_started
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/shareway
       DB_USER: ${DB_USER:-shareway}
@@ -33,6 +35,7 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
       DRIVER_MANAGEMENT_URL: http://driver-management:8081
       PAYMENTS_SETTLEMENT_URL: http://payments-settlement:8085
+      TRIP_PLANNING_MATCHING_URL: http://trip-planning-matching:8081
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -96,6 +99,31 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
 
+  trip-planning-matching-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: trip_planning_matching
+      POSTGRES_USER: ${DB_USER:-shareway}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - trip-planning-matching-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # No authentication of its own: only the gateway and the monolith reach it.
+  trip-planning-matching:
+    build: ${TRIP_PLANNING_MATCHING_CONTEXT:-../shareway-trip-planning-matching-service}
+    depends_on:
+      trip-planning-matching-db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://trip-planning-matching-db:5432/trip_planning_matching
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-shareway}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
   gateway:
     build: .
     depends_on:
@@ -105,12 +133,14 @@ services:
         condition: service_started
       payments-settlement:
         condition: service_started
+      trip-planning-matching:
+        condition: service_started
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       UPSTREAM_MONOLITH: http://monolith:8080
       UPSTREAM_DRIVER_MANAGEMENT: ${UPSTREAM_DRIVER_MANAGEMENT:-http://driver-management:8081}
-      UPSTREAM_TRIP_PLANNING_MATCHING: ${UPSTREAM_TRIP_PLANNING_MATCHING:-}
+      UPSTREAM_TRIP_PLANNING_MATCHING: ${UPSTREAM_TRIP_PLANNING_MATCHING:-http://trip-planning-matching:8081}
       UPSTREAM_BOOKING_PRICING: ${UPSTREAM_BOOKING_PRICING:-}
       UPSTREAM_PAYMENTS_SETTLEMENT: ${UPSTREAM_PAYMENTS_SETTLEMENT:-http://payments-settlement:8085}
       UPSTREAM_TRIP_EXECUTION: ${UPSTREAM_TRIP_EXECUTION:-}
@@ -128,4 +158,5 @@ volumes:
   postgres-data:
   driver-management-data:
   payments-settlement-data:
+  trip-planning-matching-data:
   document-storage:
