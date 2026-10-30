@@ -1,6 +1,7 @@
 import express, {type Express} from 'express';
 import helmet from 'helmet';
 import type {GatewayConfig} from './config.js';
+import {docsRouter} from './docs.js';
 import {sendError} from './http-errors.js';
 import {authenticate} from './middleware/auth.js';
 import {guardPaths} from './middleware/path-guard.js';
@@ -24,6 +25,7 @@ export function createApp(config: GatewayConfig): Express {
   app.use(guardPaths());
   app.use(authenticate(config.jwtSecret));
   app.use(limitRequestsPerClient(config.rateLimit));
+  app.use(docsRouter(config));
   for (const route of config.routes) {
     app.use(proxyRoute(route));
   }

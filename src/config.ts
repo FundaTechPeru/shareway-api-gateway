@@ -3,6 +3,8 @@ import {resolveRoutes, type ResolvedRoute} from './routes.js';
 /** Settings of the gateway, read from environment variables. */
 export interface GatewayConfig {
   port: number;
+  /** URL where clients reach the gateway; the API documents point "Try it out" to it. */
+  publicUrl: string;
   jwtSecret: string;
   /** Base URL of the monolith, the default upstream of every route. */
   monolithUrl: string;
@@ -16,9 +18,11 @@ export interface GatewayConfig {
 export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): GatewayConfig {
+  const port = Number(env.PORT ?? 8000);
   const monolithUrl = required(env, 'UPSTREAM_MONOLITH');
   return {
-    port: Number(env.PORT ?? 8000),
+    port,
+    publicUrl: env.PUBLIC_URL ?? `http://localhost:${port}`,
     jwtSecret: required(env, 'JWT_SECRET'),
     monolithUrl,
     routes: resolveRoutes(env, monolithUrl),
