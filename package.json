@@ -1,0 +1,29 @@
+{
+  "name": "shareway-api-gateway",
+  "version": "0.0.1",
+  "description": "API gateway of ShareWay: single entry point in front of the monolith and the extracted services (Strangler Fig).",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "lint": "gts lint",
+    "fix": "gts fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "gts": "^7.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.0",
+    "vitest": "^5.0.5"
+  }
+}
