@@ -12,7 +12,7 @@ describe('health', () => {
     expect(response.body).toEqual({
       status: 'UP',
       services: {
-        'driver-management': 'CLOSED',
+        'driver-management': 'NOT_CONFIGURED',
         'trip-planning-matching': 'CLOSED',
         'booking-pricing': 'CLOSED',
         'payments-settlement': 'CLOSED',

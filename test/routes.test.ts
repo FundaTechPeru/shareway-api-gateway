@@ -9,7 +9,6 @@ describe('resolveRoutes', () => {
 
     const inMonolith = routes.filter(route => !route.standalone);
     expect(inMonolith.map(route => route.service)).toEqual([
-      'driver-management',
       'trip-planning-matching',
       'booking-pricing',
       'payments-settlement',
@@ -34,6 +33,17 @@ describe('resolveRoutes', () => {
     });
     expect(booking).toMatchObject({upstream: MONOLITH, extracted: false});
   });
+
+  it.each(['trip-execution', 'driver-management'])(
+    'never sends %s to the monolith',
+    service => {
+      const route = resolveRoutes({}, MONOLITH).find(
+        r => r.service === service,
+      );
+
+      expect(route).toMatchObject({upstream: undefined, extracted: true});
+    },
+  );
 
   it('leaves trip execution without upstream until it is set', () => {
     const unset = resolveRoutes({}, MONOLITH).find(
