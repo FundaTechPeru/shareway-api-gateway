@@ -32,8 +32,9 @@ describe('API documentation', () => {
     monolith = await startUpstream(
       serveDocument({
         paths: {
+          '/api/v1/bookings': OK,
+          '/api/v1/bookings/{id}': OK,
           '/api/v1/payments': OK,
-          '/api/v1/payments/{id}': OK,
           '/api/v1/internal/settlements/run': OK,
         },
       }),
@@ -56,16 +57,16 @@ describe('API documentation', () => {
   it('reads the group of a service from the monolith and points it to the gateway', async () => {
     const app = testApp({UPSTREAM_MONOLITH: monolith.url});
 
-    const response = await request(app).get('/v3/api-docs/payments-settlement');
+    const response = await request(app).get('/v3/api-docs/booking-pricing');
 
     expect(response.status).toBe(200);
-    expect(monolith.received.at(-1)?.url).toBe('/v3/api-docs/payments');
+    expect(monolith.received.at(-1)?.url).toBe('/v3/api-docs/booking');
     expect(response.body.servers).toEqual([
       {url: 'https://api.shareway.test', description: 'ShareWay API gateway'},
     ]);
     expect(Object.keys(response.body.paths)).toEqual([
-      '/api/v1/payments',
-      '/api/v1/payments/{id}',
+      '/api/v1/bookings',
+      '/api/v1/bookings/{id}',
     ]);
   });
 

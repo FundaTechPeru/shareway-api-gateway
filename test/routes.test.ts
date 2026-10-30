@@ -11,7 +11,6 @@ describe('resolveRoutes', () => {
     expect(inMonolith.map(route => route.service)).toEqual([
       'trip-planning-matching',
       'booking-pricing',
-      'payments-settlement',
     ]);
     for (const route of inMonolith) {
       expect(route.upstream).toBe(MONOLITH);
@@ -21,20 +20,22 @@ describe('resolveRoutes', () => {
 
   it('moves only the service whose upstream is set', () => {
     const routes = resolveRoutes(
-      {UPSTREAM_PAYMENTS_SETTLEMENT: 'http://payments:8080'},
+      {UPSTREAM_TRIP_PLANNING_MATCHING: 'http://trip-planning:8080'},
       MONOLITH,
     );
 
-    const payments = routes.find(r => r.service === 'payments-settlement');
+    const tripPlanning = routes.find(
+      r => r.service === 'trip-planning-matching',
+    );
     const booking = routes.find(r => r.service === 'booking-pricing');
-    expect(payments).toMatchObject({
-      upstream: 'http://payments:8080',
+    expect(tripPlanning).toMatchObject({
+      upstream: 'http://trip-planning:8080',
       extracted: true,
     });
     expect(booking).toMatchObject({upstream: MONOLITH, extracted: false});
   });
 
-  it.each(['trip-execution', 'driver-management'])(
+  it.each(['trip-execution', 'driver-management', 'payments-settlement'])(
     'never sends %s to the monolith',
     service => {
       const route = resolveRoutes({}, MONOLITH).find(
