@@ -1,4 +1,5 @@
 import CircuitBreaker from 'opossum';
+import type {Logger} from './logger.js';
 
 /** When a circuit opens and how long it stays open. */
 export interface CircuitSettings {
@@ -26,7 +27,10 @@ export type Call = () => Promise<void>;
 export class UpstreamCircuits {
   private readonly breakers = new Map<string, CircuitBreaker<[Call], void>>();
 
-  constructor(readonly settings: CircuitSettings) {}
+  constructor(
+    readonly settings: CircuitSettings,
+    private readonly logger: Logger,
+  ) {}
 
   for(upstream: string): CircuitBreaker<[Call], void> {
     let breaker = this.breakers.get(upstream);
@@ -40,8 +44,25 @@ export class UpstreamCircuits {
         resetTimeout: this.settings.resetTimeoutMs,
         rollingCountTimeout: this.settings.windowMs,
       });
+      breaker.on('open', () =>
+        this.logger.warn({upstream}, 'Circuit opened, upstream calls stopped'),
+      );
+      breaker.on('halfOpen', () =>
+        this.logger.info({upstream}, 'Circuit half open, trying the upstream'),
+      );
+      breaker.on('close', () =>
+        this.logger.info({upstream}, 'Circuit closed, upstream is back'),
+      );
       this.breakers.set(upstream, breaker);
     }
     return breaker;
+  }
+
+  state(upstream: string): 'CLOSED' | 'OPEN' | 'HALF_OPEN' {
+    const breaker = this.for(upstream);
+    if (breaker.halfOpen) {
+      return 'HALF_OPEN';
+    }
+    return breaker.opened ? 'OPEN' : 'CLOSED';
   }
 }

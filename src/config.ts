@@ -17,6 +17,8 @@ export interface GatewayConfig {
   /** Time without an answer from an upstream before the gateway answers 504. */
   upstreamTimeoutMs: number;
   circuit: CircuitSettings;
+  /** Pino level: fatal, error, warn, info, debug, trace or silent. */
+  logLevel: string;
 }
 
 export function loadConfig(
@@ -52,6 +54,7 @@ export function loadConfig(
       resetTimeoutMs: Number(env.CIRCUIT_RESET_TIMEOUT_MS ?? 30_000),
       windowMs: circuitWindowMs,
     },
+    logLevel: env.LOG_LEVEL ?? 'info',
   };
 }
 

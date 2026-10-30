@@ -62,6 +62,10 @@ export function proxyRoute(
         });
       },
       error: (error, req, res) => {
+        req.log?.warn(
+          {err: error, upstream: route.upstream},
+          'Upstream call failed',
+        );
         if ('headersSent' in res && !res.headersSent) {
           const timedOut =
             (error as NodeJS.ErrnoException).code === UPSTREAM_TIMEOUT;
