@@ -5,8 +5,6 @@ import {sendError} from './http-errors.js';
 import {REQUEST_ID_HEADER} from './middleware/request-id.js';
 import {matchesPrefix, type ResolvedRoute} from './routes.js';
 
-const DOCS_TIMEOUT_MS = 5_000;
-
 /** The parts of an OpenAPI document that the gateway rewrites. */
 export interface OpenApiDocument {
   servers?: {url: string; description?: string}[];
@@ -42,7 +40,7 @@ export function docsRouter(config: GatewayConfig): Router {
       sendError(req, res, 404, 'Unknown service');
       return;
     }
-    await serveDocument(req, res, route, config.publicUrl);
+    await serveDocument(req, res, route, config);
   });
   router.get(
     ['/swagger-ui.html', '/swagger-ui', '/swagger-ui/{*splat}'],
@@ -60,7 +58,7 @@ async function serveDocument(
   req: Request,
   res: Response,
   route: ResolvedRoute,
-  publicUrl: string,
+  config: GatewayConfig,
 ): Promise<void> {
   const url = documentUrl(route);
   if (!url) {
@@ -74,7 +72,7 @@ async function serveDocument(
         accept: 'application/json',
         [REQUEST_ID_HEADER]: String(req.headers[REQUEST_ID_HEADER]),
       },
-      signal: AbortSignal.timeout(DOCS_TIMEOUT_MS),
+      signal: AbortSignal.timeout(config.upstreamTimeoutMs),
     });
     if (!upstream.ok) {
       throw new Error(`Upstream answered ${upstream.status}`);
@@ -89,7 +87,7 @@ async function serveDocument(
     );
     return;
   }
-  res.json(toGatewayDocument(document, route, publicUrl));
+  res.json(toGatewayDocument(document, route, config.publicUrl));
 }
 
 /** OpenAPI document of the service: its group in the monolith, or its own once extracted. */

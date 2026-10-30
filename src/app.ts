@@ -1,5 +1,6 @@
 import express, {type Express} from 'express';
 import helmet from 'helmet';
+import {UpstreamCircuits} from './circuits.js';
 import type {GatewayConfig} from './config.js';
 import {docsRouter} from './docs.js';
 import {sendError} from './http-errors.js';
@@ -26,8 +27,9 @@ export function createApp(config: GatewayConfig): Express {
   app.use(authenticate(config.jwtSecret));
   app.use(limitRequestsPerClient(config.rateLimit));
   app.use(docsRouter(config));
+  const circuits = new UpstreamCircuits(config.circuit);
   for (const route of config.routes) {
-    app.use(proxyRoute(route));
+    app.use(proxyRoute(route, {circuits, timeoutMs: config.upstreamTimeoutMs}));
   }
   app.use((req, res) => sendError(req, res, 404, 'Resource not found'));
   return app;
