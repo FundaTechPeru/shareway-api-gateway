@@ -1,0 +1,68 @@
+# Local environment of the Strangler Fig setup: PostgreSQL, the monolith and the gateway in front
+# on http://localhost:8000. The monolith is built from a clone of shareway-monolith next to this
+# repository (change MONOLITH_CONTEXT otherwise) and is only reachable through the gateway.
+# Copy .env.example to .env and set the secrets before running: docker compose up --build
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: shareway
+      POSTGRES_USER: ${DB_USER:-shareway}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  monolith:
+    build: ${MONOLITH_CONTEXT:-../shareway-monolith}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/shareway
+      DB_USER: ${DB_USER:-shareway}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - document-storage:/app/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  gateway:
+    build: .
+    depends_on:
+      monolith:
+        condition: service_healthy
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      UPSTREAM_MONOLITH: http://monolith:8080
+      UPSTREAM_DRIVER_MANAGEMENT: ${UPSTREAM_DRIVER_MANAGEMENT:-}
+      UPSTREAM_TRIP_PLANNING_MATCHING: ${UPSTREAM_TRIP_PLANNING_MATCHING:-}
+      UPSTREAM_BOOKING_PRICING: ${UPSTREAM_BOOKING_PRICING:-}
+      UPSTREAM_PAYMENTS_SETTLEMENT: ${UPSTREAM_PAYMENTS_SETTLEMENT:-}
+      UPSTREAM_TRIP_EXECUTION: ${UPSTREAM_TRIP_EXECUTION:-}
+      UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-10000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Lets an upstream that runs on the host, such as Trip Execution, be reached as
+    # http://host.docker.internal:<port> on Linux as well.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+
+volumes:
+  postgres-data:
+  document-storage:
