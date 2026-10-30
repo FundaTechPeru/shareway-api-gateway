@@ -73,8 +73,9 @@ export const ROUTES: readonly ServiceRoute[] = [
       '/api/v1/admin/settlements',
     ],
     upstreamEnv: 'UPSTREAM_PAYMENTS_SETTLEMENT',
-    monolithDocsGroup: 'payments',
     docsPath: '/v3/api-docs',
+    // Removed from the monolith: served only by shareway-payments-settlement-service.
+    standalone: true,
   },
   {
     service: 'trip-execution',

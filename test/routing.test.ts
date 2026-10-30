@@ -24,10 +24,6 @@ describe('routing', () => {
       '/api/v1/bookings/42',
       '/api/v1/fares/quote',
       '/api/v1/fare-rules',
-      '/api/v1/payments',
-      '/api/v1/payment-methods',
-      '/api/v1/settlements',
-      '/api/v1/admin/settlements',
     ])('forwards %s to the monolith with the same path', async path => {
       const app = testApp({UPSTREAM_MONOLITH: monolith.url});
 
@@ -43,6 +39,8 @@ describe('routing', () => {
       ['/api/v1/trips/42', 'Trip Execution'],
       ['/api/v1/users/me', 'Driver Management'],
       ['/api/v1/drivers/me/documents', 'Driver Management'],
+      ['/api/v1/payments/me', 'Payments & Settlement'],
+      ['/api/v1/admin/settlements', 'Payments & Settlement'],
     ])('answers 503 for %s while %s is not configured', async (path, title) => {
       const app = testApp({UPSTREAM_MONOLITH: monolith.url});
       const before = monolith.received.length;
