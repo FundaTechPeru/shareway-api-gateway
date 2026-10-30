@@ -7,7 +7,7 @@
   "type": "module",
   "main": "dist/server.js",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.15"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
