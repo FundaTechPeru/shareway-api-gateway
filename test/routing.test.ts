@@ -19,8 +19,6 @@ describe('routing', () => {
 
   describe('with every service in the monolith', () => {
     it.each([
-      '/api/v1/trip-requests',
-      '/api/v1/driver-availabilities',
       '/api/v1/bookings/42',
       '/api/v1/fares/quote',
       '/api/v1/fare-rules',
@@ -41,6 +39,8 @@ describe('routing', () => {
       ['/api/v1/drivers/me/documents', 'Driver Management'],
       ['/api/v1/payments/me', 'Payments & Settlement'],
       ['/api/v1/admin/settlements', 'Payments & Settlement'],
+      ['/api/v1/trip-requests', 'Trip Planning & Matching'],
+      ['/api/v1/driver-availabilities', 'Trip Planning & Matching'],
     ])('answers 503 for %s while %s is not configured', async (path, title) => {
       const app = testApp({UPSTREAM_MONOLITH: monolith.url});
       const before = monolith.received.length;

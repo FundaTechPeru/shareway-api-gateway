@@ -21,7 +21,7 @@ monolith (and Trip Execution) only go to their own upstream and answer 503 while
 | Service | Path prefixes | Upstream variable | OpenAPI document while in the monolith |
 |---|---|---|---|
 | Driver Management | `/api/v1/auth`, `/api/v1/users`, `/api/v1/drivers`, `/api/v1/driver-documents` | `UPSTREAM_DRIVER_MANAGEMENT` (removed from the monolith) | none: `/v3/api-docs` on the service |
-| Trip Planning & Matching | `/api/v1/trip-requests`, `/api/v1/driver-availabilities` | `UPSTREAM_TRIP_PLANNING_MATCHING` | `/v3/api-docs/tripplanning` |
+| Trip Planning & Matching | `/api/v1/trip-requests`, `/api/v1/driver-availabilities` | `UPSTREAM_TRIP_PLANNING_MATCHING` (removed from the monolith) | none: `/v3/api-docs` on the service |
 | Booking & Pricing | `/api/v1/bookings`, `/api/v1/fares`, `/api/v1/fare-rules` | `UPSTREAM_BOOKING_PRICING` | `/v3/api-docs/booking` |
 | Payments & Settlement | `/api/v1/payments`, `/api/v1/payment-methods`, `/api/v1/settlements`, `/api/v1/admin/settlements` | `UPSTREAM_PAYMENTS_SETTLEMENT` (removed from the monolith) | none: `/v3/api-docs` on the service |
 | Trip Execution | `/api/v1/trips`, rewritten to `/api/viajes` | `UPSTREAM_TRIP_EXECUTION` (never in the monolith) | `/openapi/v1.json` on the service |
@@ -82,7 +82,8 @@ its route is marked `standalone` in `src/routes.ts`, so it never falls back to t
 |---|---|
 | Driver Management | Extracted and removed from the monolith (`shareway-driver-management-service`) |
 | Payments & Settlement | Extracted and removed from the monolith (`shareway-payments-settlement-service`); its `/api/v1/internal/**` endpoints stay private |
-| Trip Planning & Matching, Booking & Pricing | In the monolith |
+| Trip Planning & Matching | Extracted and removed from the monolith (`shareway-trip-planning-matching-service`) |
+| Booking & Pricing | In the monolith |
 
 ## API documentation
 
@@ -100,10 +101,11 @@ Prerequisites: Node.js 22.15 or later (see `.nvmrc`) and, for the full setup, Do
 ### Gateway, monolith, extracted services and PostgreSQL with Docker
 
 Clone [shareway-monolith](https://github.com/FundaTechPeru/shareway-monolith),
-[shareway-driver-management-service](https://github.com/FundaTechPeru/shareway-driver-management-service)
-and [shareway-payments-settlement-service](https://github.com/FundaTechPeru/shareway-payments-settlement-service)
-next to this repository (or set `MONOLITH_CONTEXT`, `DRIVER_MANAGEMENT_CONTEXT` and
-`PAYMENTS_SETTLEMENT_CONTEXT` to their paths), then:
+[shareway-driver-management-service](https://github.com/FundaTechPeru/shareway-driver-management-service),
+[shareway-payments-settlement-service](https://github.com/FundaTechPeru/shareway-payments-settlement-service)
+and [shareway-trip-planning-matching-service](https://github.com/FundaTechPeru/shareway-trip-planning-matching-service)
+next to this repository (or set `MONOLITH_CONTEXT`, `DRIVER_MANAGEMENT_CONTEXT`,
+`PAYMENTS_SETTLEMENT_CONTEXT` and `TRIP_PLANNING_MATCHING_CONTEXT` to their paths), then:
 
 ```bash
 cp .env.example .env            # set DB_PASSWORD, JWT_SECRET and INTERNAL_API_KEY
@@ -116,7 +118,8 @@ own: set `UPSTREAM_TRIP_EXECUTION=http://host.docker.internal:<port>` to reach i
 ### Gateway only
 
 With the monolith already running on `http://localhost:8080`, Driver Management on
-`http://localhost:8081` and Payments & Settlement on `http://localhost:8085`:
+`http://localhost:8081`, Payments & Settlement on `http://localhost:8085` and Trip Planning &
+Matching on `http://localhost:8083`:
 
 ```bash
 npm install
@@ -133,8 +136,8 @@ npx tsx watch --env-file=.env src/server.ts
 | `PUBLIC_URL` | `http://localhost:<PORT>` | URL clients use; the OpenAPI documents point to it |
 | `JWT_SECRET` | none, required | HS256 secret shared with the monolith and the services |
 | `UPSTREAM_MONOLITH` | none, required | Default upstream of every route |
-| `UPSTREAM_DRIVER_MANAGEMENT`, `UPSTREAM_PAYMENTS_SETTLEMENT` | empty | Services removed from the monolith; their paths answer 503 while empty |
-| `UPSTREAM_TRIP_PLANNING_MATCHING`, `UPSTREAM_BOOKING_PRICING` | empty | URL of the extracted service; empty keeps the monolith |
+| `UPSTREAM_DRIVER_MANAGEMENT`, `UPSTREAM_PAYMENTS_SETTLEMENT`, `UPSTREAM_TRIP_PLANNING_MATCHING` | empty | Services removed from the monolith; their paths answer 503 while empty |
+| `UPSTREAM_BOOKING_PRICING` | empty | URL of Booking & Pricing if it is ever extracted; empty keeps the monolith |
 | `UPSTREAM_TRIP_EXECUTION` | empty | Trip Execution; `/api/v1/trips` answers 503 while empty |
 | `UPSTREAM_TIMEOUT_MS` | `10000` | Time without an answer before 504 (also for the API documents) |
 | `CIRCUIT_ERROR_THRESHOLD_PERCENT` | `50` | Failed requests, in a 10 s window, that open a circuit |
@@ -145,8 +148,8 @@ npx tsx watch --env-file=.env src/server.ts
 | `LOG_LEVEL` | `info` | pino level (`silent` turns logs off) |
 
 `docker-compose.yml` also reads `DB_USER`, `DB_PASSWORD`, `INTERNAL_API_KEY`, `ADMIN_EMAIL`,
-`ADMIN_PASSWORD`, `GATEWAY_PORT`, `MONOLITH_CONTEXT`, `DRIVER_MANAGEMENT_CONTEXT` and
-`PAYMENTS_SETTLEMENT_CONTEXT`.
+`ADMIN_PASSWORD`, `GATEWAY_PORT`, `MONOLITH_CONTEXT`, `DRIVER_MANAGEMENT_CONTEXT`,
+`PAYMENTS_SETTLEMENT_CONTEXT` and `TRIP_PLANNING_MATCHING_CONTEXT`.
 
 ## Health and logs
 
@@ -169,14 +172,14 @@ rate limiting, timeouts and circuits, the rewritten OpenAPI documents and the he
 
 ## Decisions and known issues
 
-- **Trip Execution has no authentication of its own**: the gateway is the only token check in
-  front of it, so it must not be reachable from outside the private network.
+- **Trip Execution and Trip Planning & Matching have no authentication of their own**: the gateway
+  is the only token check in front of them, so they must not be reachable from outside the private
+  network.
 - Trip Execution publishes `/openapi/v1.json` only in its Development environment; elsewhere its
   entry in `/docs` answers 502.
 - Upstream answers with 5xx do not open a circuit: they come from a live service (Payments &
   Settlement answers 503 when its payment provider fails), and only the upstream knows why.
 - API documents are fetched on every request, without cache, so they always match the upstream.
-- `/api/v1/info` of the monolith (Trip Planning service description) is not in the route table.
 - The Docker image is built by the CI workflow; it was not built on the development machine.
 
 ## Contributing

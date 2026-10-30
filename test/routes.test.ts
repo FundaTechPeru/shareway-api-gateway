@@ -4,47 +4,40 @@ import {matchesPrefix, resolveRoutes} from '../src/routes.js';
 const MONOLITH = 'http://monolith:8080';
 
 describe('resolveRoutes', () => {
-  it('sends every monolith service to the monolith by default', () => {
+  it('sends the service left in the monolith to the monolith by default', () => {
     const routes = resolveRoutes({}, MONOLITH);
 
     const inMonolith = routes.filter(route => !route.standalone);
-    expect(inMonolith.map(route => route.service)).toEqual([
-      'trip-planning-matching',
-      'booking-pricing',
-    ]);
+    expect(inMonolith.map(route => route.service)).toEqual(['booking-pricing']);
     for (const route of inMonolith) {
       expect(route.upstream).toBe(MONOLITH);
       expect(route.extracted).toBe(false);
     }
   });
 
-  it('moves only the service whose upstream is set', () => {
+  it('moves booking to its own upstream once it is set', () => {
     const routes = resolveRoutes(
-      {UPSTREAM_TRIP_PLANNING_MATCHING: 'http://trip-planning:8080'},
+      {UPSTREAM_BOOKING_PRICING: 'http://booking:8080'},
       MONOLITH,
     );
 
-    const tripPlanning = routes.find(
-      r => r.service === 'trip-planning-matching',
-    );
     const booking = routes.find(r => r.service === 'booking-pricing');
-    expect(tripPlanning).toMatchObject({
-      upstream: 'http://trip-planning:8080',
+    expect(booking).toMatchObject({
+      upstream: 'http://booking:8080',
       extracted: true,
     });
-    expect(booking).toMatchObject({upstream: MONOLITH, extracted: false});
   });
 
-  it.each(['trip-execution', 'driver-management', 'payments-settlement'])(
-    'never sends %s to the monolith',
-    service => {
-      const route = resolveRoutes({}, MONOLITH).find(
-        r => r.service === service,
-      );
+  it.each([
+    'trip-execution',
+    'driver-management',
+    'payments-settlement',
+    'trip-planning-matching',
+  ])('never sends %s to the monolith', service => {
+    const route = resolveRoutes({}, MONOLITH).find(r => r.service === service);
 
-      expect(route).toMatchObject({upstream: undefined, extracted: true});
-    },
-  );
+    expect(route).toMatchObject({upstream: undefined, extracted: true});
+  });
 
   it('leaves trip execution without upstream until it is set', () => {
     const unset = resolveRoutes({}, MONOLITH).find(

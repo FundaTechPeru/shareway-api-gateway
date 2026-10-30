@@ -13,7 +13,7 @@ describe('health', () => {
       status: 'UP',
       services: {
         'driver-management': 'CLOSED',
-        'trip-planning-matching': 'CLOSED',
+        'trip-planning-matching': 'NOT_CONFIGURED',
         'booking-pricing': 'CLOSED',
         'payments-settlement': 'NOT_CONFIGURED',
         'trip-execution': 'NOT_CONFIGURED',

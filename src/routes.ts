@@ -52,8 +52,9 @@ export const ROUTES: readonly ServiceRoute[] = [
     title: 'Trip Planning & Matching',
     prefixes: ['/api/v1/trip-requests', '/api/v1/driver-availabilities'],
     upstreamEnv: 'UPSTREAM_TRIP_PLANNING_MATCHING',
-    monolithDocsGroup: 'tripplanning',
     docsPath: '/v3/api-docs',
+    // Removed from the monolith: served only by shareway-trip-planning-matching-service.
+    standalone: true,
   },
   {
     service: 'booking-pricing',
