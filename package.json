@@ -1,6 +1,6 @@
 {
   "name": "shareway-api-gateway",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "API gateway of ShareWay: single entry point in front of the monolith and the extracted services (Strangler Fig).",
   "private": true,
   "license": "UNLICENSED",
