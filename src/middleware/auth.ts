@@ -37,11 +37,12 @@ export function isPublicPath(path: string): boolean {
 
 /**
  * Validates the HS256 access token issued by Driver Management with the same JWT_SECRET. The
- * Authorization header is left untouched so the upstream service validates it again.
+ * Authorization header is left untouched so the upstream service validates it again. CORS
+ * preflight requests never carry a token, so they reach the upstream, which answers them.
  */
 export function authenticate(secret: string): RequestHandler {
   return (req, res, next) => {
-    if (isPublicPath(req.path)) {
+    if (req.method === 'OPTIONS' || isPublicPath(req.path)) {
       next();
       return;
     }

@@ -1,7 +1,9 @@
 import express, {type Express} from 'express';
+import helmet from 'helmet';
 import type {GatewayConfig} from './config.js';
 import {sendError} from './http-errors.js';
 import {authenticate} from './middleware/auth.js';
+import {guardPaths} from './middleware/path-guard.js';
 import {limitRequestsPerClient} from './middleware/rate-limit.js';
 import {assignRequestId} from './middleware/request-id.js';
 import {proxyRoute} from './proxy.js';
@@ -11,7 +13,15 @@ export function createApp(config: GatewayConfig): Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
+  // The gateway serves plain HTTP behind the TLS terminator, so the browser must not upgrade the
+  // Swagger UI assets to HTTPS on its own.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {directives: {upgradeInsecureRequests: null}},
+    }),
+  );
   app.use(assignRequestId());
+  app.use(guardPaths());
   app.use(authenticate(config.jwtSecret));
   app.use(limitRequestsPerClient(config.rateLimit));
   for (const route of config.routes) {
