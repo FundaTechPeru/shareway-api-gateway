@@ -10,15 +10,19 @@ import {
 } from './helpers.js';
 
 describe('authentication', () => {
-  let monolith: FakeUpstream;
+  let upstream: FakeUpstream;
   let app: Express;
 
   beforeAll(async () => {
-    monolith = await startUpstream();
-    app = testApp({UPSTREAM_MONOLITH: monolith.url});
+    upstream = await startUpstream();
+    // Driver Management runs on its own; the same fake answers for it and the monolith.
+    app = testApp({
+      UPSTREAM_MONOLITH: upstream.url,
+      UPSTREAM_DRIVER_MANAGEMENT: upstream.url,
+    });
   });
 
-  afterAll(() => monolith.close());
+  afterAll(() => upstream.close());
 
   it('rejects a request without token with the error body of the services', async () => {
     const response = await request(app).get('/api/v1/bookings');
@@ -60,7 +64,7 @@ describe('authentication', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toBe('Invalid or expired token');
-    expect(monolith.received).toHaveLength(0);
+    expect(upstream.received).toHaveLength(0);
   });
 
   it('forwards a valid token untouched so the upstream checks it again', async () => {

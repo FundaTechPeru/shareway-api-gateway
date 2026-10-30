@@ -3,17 +3,12 @@ import type {Logger} from './logger.js';
 
 /** When a circuit opens and how long it stays open. */
 export interface CircuitSettings {
-  /** Percentage of failed requests, within the window, that opens the circuit. */
+  /** Percentage of failed requests, within a 10 s window, that opens the circuit. */
   errorThresholdPercentage: number;
   /** Requests needed in the window before the percentage counts. */
   volumeThreshold: number;
   /** Time the circuit stays open before one trial request goes through. */
   resetTimeoutMs: number;
-  /**
-   * Rolling window of the statistics. A request counts when it starts and its failure when it
-   * ends, so the window must outlast the upstream timeout or slow failures never open the circuit.
-   */
-  windowMs: number;
 }
 
 /** A forwarded request: settles when the upstream answers or fails. */
@@ -42,7 +37,6 @@ export class UpstreamCircuits {
         errorThresholdPercentage: this.settings.errorThresholdPercentage,
         volumeThreshold: this.settings.volumeThreshold,
         resetTimeout: this.settings.resetTimeoutMs,
-        rollingCountTimeout: this.settings.windowMs,
       });
       breaker.on('open', () =>
         this.logger.warn({upstream}, 'Circuit opened, upstream calls stopped'),

@@ -4,7 +4,7 @@ import {testApp} from './helpers.js';
 
 describe('health', () => {
   it('reports UP and the circuit of each service without a token', async () => {
-    const app = testApp({UPSTREAM_PAYMENTS_SETTLEMENT: 'http://127.0.0.1:9'});
+    const app = testApp({UPSTREAM_DRIVER_MANAGEMENT: 'http://127.0.0.1:9'});
 
     const response = await request(app).get('/health');
 
@@ -13,9 +13,9 @@ describe('health', () => {
       status: 'UP',
       services: {
         'driver-management': 'CLOSED',
-        'trip-planning-matching': 'CLOSED',
+        'trip-planning-matching': 'NOT_CONFIGURED',
         'booking-pricing': 'CLOSED',
-        'payments-settlement': 'CLOSED',
+        'payments-settlement': 'NOT_CONFIGURED',
         'trip-execution': 'NOT_CONFIGURED',
       },
     });

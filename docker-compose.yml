@@ -1,6 +1,7 @@
-# Local environment of the Strangler Fig setup: PostgreSQL, the monolith and the gateway in front
-# on http://localhost:8000. The monolith is built from a clone of shareway-monolith next to this
-# repository (change MONOLITH_CONTEXT otherwise) and is only reachable through the gateway.
+# Local environment of the Strangler Fig setup: PostgreSQL, the monolith, the extracted services
+# and the gateway in front on http://localhost:8000. Each one is built from a clone next to this
+# repository (change MONOLITH_CONTEXT, DRIVER_MANAGEMENT_CONTEXT, PAYMENTS_SETTLEMENT_CONTEXT or
+# TRIP_PLANNING_MATCHING_CONTEXT otherwise) and is only reachable through the gateway.
 # Copy .env.example to .env and set the secrets before running: docker compose up --build
 services:
   postgres:
@@ -22,16 +23,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      payments-settlement:
+        condition: service_started
+      trip-planning-matching:
+        condition: service_started
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/shareway
       DB_USER: ${DB_USER:-shareway}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-    volumes:
-      - document-storage:/app/storage
+      DRIVER_MANAGEMENT_URL: http://driver-management:8081
+      PAYMENTS_SETTLEMENT_URL: http://payments-settlement:8085
+      TRIP_PLANNING_MATCHING_URL: http://trip-planning-matching:8081
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -39,19 +43,106 @@ services:
       start_period: 60s
       retries: 10
 
+  driver-management-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: driver_management
+      POSTGRES_USER: ${DB_USER:-shareway}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - driver-management-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  driver-management:
+    build: ${DRIVER_MANAGEMENT_CONTEXT:-../shareway-driver-management-service}
+    depends_on:
+      driver-management-db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://driver-management-db:5432/driver_management
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-shareway}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      STORAGE_PATH: /app/storage
+    volumes:
+      - document-storage:/app/storage
+
+  payments-settlement-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: payments_settlement
+      POSTGRES_USER: ${DB_USER:-shareway}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - payments-settlement-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  payments-settlement:
+    build: ${PAYMENTS_SETTLEMENT_CONTEXT:-../shareway-payments-settlement-service}
+    depends_on:
+      payments-settlement-db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://payments-settlement-db:5432/payments_settlement
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-shareway}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+
+  trip-planning-matching-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: trip_planning_matching
+      POSTGRES_USER: ${DB_USER:-shareway}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - trip-planning-matching-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # No authentication of its own: only the gateway and the monolith reach it.
+  trip-planning-matching:
+    build: ${TRIP_PLANNING_MATCHING_CONTEXT:-../shareway-trip-planning-matching-service}
+    depends_on:
+      trip-planning-matching-db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://trip-planning-matching-db:5432/trip_planning_matching
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-shareway}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+
   gateway:
     build: .
     depends_on:
       monolith:
         condition: service_healthy
+      driver-management:
+        condition: service_started
+      payments-settlement:
+        condition: service_started
+      trip-planning-matching:
+        condition: service_started
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       UPSTREAM_MONOLITH: http://monolith:8080
-      UPSTREAM_DRIVER_MANAGEMENT: ${UPSTREAM_DRIVER_MANAGEMENT:-}
-      UPSTREAM_TRIP_PLANNING_MATCHING: ${UPSTREAM_TRIP_PLANNING_MATCHING:-}
+      UPSTREAM_DRIVER_MANAGEMENT: ${UPSTREAM_DRIVER_MANAGEMENT:-http://driver-management:8081}
+      UPSTREAM_TRIP_PLANNING_MATCHING: ${UPSTREAM_TRIP_PLANNING_MATCHING:-http://trip-planning-matching:8081}
       UPSTREAM_BOOKING_PRICING: ${UPSTREAM_BOOKING_PRICING:-}
-      UPSTREAM_PAYMENTS_SETTLEMENT: ${UPSTREAM_PAYMENTS_SETTLEMENT:-}
+      UPSTREAM_PAYMENTS_SETTLEMENT: ${UPSTREAM_PAYMENTS_SETTLEMENT:-http://payments-settlement:8085}
       UPSTREAM_TRIP_EXECUTION: ${UPSTREAM_TRIP_EXECUTION:-}
       UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-10000}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
@@ -65,4 +156,7 @@ services:
 
 volumes:
   postgres-data:
+  driver-management-data:
+  payments-settlement-data:
+  trip-planning-matching-data:
   document-storage:
