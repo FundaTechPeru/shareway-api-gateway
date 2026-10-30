@@ -2,6 +2,9 @@
 export interface GatewayConfig {
   port: number;
   jwtSecret: string;
+  /** Express "trust proxy" setting, so client IPs are right behind a load balancer. */
+  trustProxy: boolean | number;
+  rateLimit: {windowMs: number; max: number};
 }
 
 export function loadConfig(
@@ -10,6 +13,11 @@ export function loadConfig(
   return {
     port: Number(env.PORT ?? 8000),
     jwtSecret: required(env, 'JWT_SECRET'),
+    trustProxy: parseTrustProxy(env.TRUST_PROXY),
+    rateLimit: {
+      windowMs: Number(env.RATE_LIMIT_WINDOW_MS ?? 60_000),
+      max: Number(env.RATE_LIMIT_MAX ?? 100),
+    },
   };
 }
 
@@ -19,4 +27,14 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
     throw new Error(`Missing required environment variable ${name}`);
   }
   return value;
+}
+
+function parseTrustProxy(value: string | undefined): boolean | number {
+  if (value === undefined || value === '' || value === 'false') {
+    return false;
+  }
+  if (value === 'true') {
+    return true;
+  }
+  return Number(value);
 }
