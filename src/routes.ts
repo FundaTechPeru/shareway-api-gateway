@@ -3,7 +3,8 @@
  *
  * Strangler Fig: every service of the monolith is served by UPSTREAM_MONOLITH until its own
  * UPSTREAM_* variable points to the extracted service; then its prefixes (and its OpenAPI
- * document) go there without touching the rest. Trip Execution never lived in the monolith.
+ * document) go there without touching the rest. Once a service is removed from the monolith it
+ * is marked standalone, like Trip Execution, which never lived there.
  */
 export type ServiceName =
   | 'driver-management'
@@ -24,7 +25,10 @@ export interface ServiceRoute {
   docsPath: string;
   /** Rewrites applied to the path before forwarding, as regular expression source and target. */
   pathRewrite?: Record<string, string>;
-  /** True for services that are never part of the monolith. */
+  /**
+   * True for services the monolith does not serve: never part of it (Trip Execution) or already
+   * removed from it. Without their own upstream they answer 503 instead of reaching the monolith.
+   */
   standalone?: boolean;
 }
 
@@ -39,8 +43,9 @@ export const ROUTES: readonly ServiceRoute[] = [
       '/api/v1/driver-documents',
     ],
     upstreamEnv: 'UPSTREAM_DRIVER_MANAGEMENT',
-    monolithDocsGroup: 'drivermanagement',
     docsPath: '/v3/api-docs',
+    // Removed from the monolith: served only by shareway-driver-management-service.
+    standalone: true,
   },
   {
     service: 'trip-planning-matching',

@@ -19,9 +19,6 @@ describe('routing', () => {
 
   describe('with every service in the monolith', () => {
     it.each([
-      '/api/v1/users/me',
-      '/api/v1/drivers/me/documents',
-      '/api/v1/driver-documents/42/review',
       '/api/v1/trip-requests',
       '/api/v1/driver-availabilities',
       '/api/v1/bookings/42',
@@ -42,18 +39,45 @@ describe('routing', () => {
       expect(response.body.url).toBe(`${path}?page=2`);
     });
 
-    it('answers 503 for trips while trip execution is not configured', async () => {
+    it.each([
+      ['/api/v1/trips/42', 'Trip Execution'],
+      ['/api/v1/users/me', 'Driver Management'],
+      ['/api/v1/drivers/me/documents', 'Driver Management'],
+    ])('answers 503 for %s while %s is not configured', async (path, title) => {
       const app = testApp({UPSTREAM_MONOLITH: monolith.url});
+      const before = monolith.received.length;
 
       const response = await request(app)
-        .get('/api/v1/trips/42')
+        .get(path)
         .set('Authorization', bearer());
 
       expect(response.status).toBe(503);
       expect(response.body.message).toBe(
-        'Trip Execution is not configured in the gateway',
+        `${title} is not configured in the gateway`,
       );
+      expect(monolith.received).toHaveLength(before);
     });
+  });
+
+  it.each([
+    '/api/v1/auth/login',
+    '/api/v1/users/me',
+    '/api/v1/drivers/me/documents',
+    '/api/v1/driver-documents/42/review',
+  ])('sends %s to driver management, which left the monolith', async path => {
+    const driverManagement = await startUpstream();
+    const app = testApp({
+      UPSTREAM_MONOLITH: monolith.url,
+      UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url,
+    });
+
+    const response = await request(app)
+      .post(path)
+      .set('Authorization', bearer());
+    await driverManagement.close();
+
+    expect(response.status).toBe(200);
+    expect(driverManagement.received.map(r => r.url)).toEqual([path]);
   });
 
   it('sends an extracted service to its own upstream and keeps the rest', async () => {

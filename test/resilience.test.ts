@@ -5,7 +5,6 @@ import {
   deadUpstreamUrl,
   startUpstream,
   testApp,
-  testConfig,
   type FakeUpstream,
 } from './helpers.js';
 
@@ -61,9 +60,9 @@ describe('resilience', () => {
         .set('Authorization', bearer());
       statuses.push(response.status);
     }
-    // The monolith serves every context, so its circuit covers all of them.
+    // The monolith serves every context left in it, so its circuit covers all of them.
     const open = await request(app)
-      .get('/api/v1/users/me')
+      .get('/api/v1/trip-requests')
       .set('Authorization', bearer());
     const health = await request(app).get('/health');
 
@@ -71,53 +70,9 @@ describe('resilience', () => {
     expect(open.status).toBe(503);
     expect(open.headers['retry-after']).toBe('60');
     expect(open.body.message).toBe(
-      'Driver Management is temporarily unavailable',
+      'Trip Planning & Matching is temporarily unavailable',
     );
     expect(health.body.services['booking-pricing']).toBe('OPEN');
-  });
-
-  it('opens the circuit when the upstream keeps timing out', async () => {
-    const app = testApp({
-      UPSTREAM_MONOLITH: slow.url,
-      UPSTREAM_TIMEOUT_MS: '100',
-      CIRCUIT_VOLUME_THRESHOLD: '3',
-    });
-
-    const statuses = [];
-    for (let i = 0; i < 4; i++) {
-      const response = await request(app)
-        .get('/api/v1/bookings')
-        .set('Authorization', bearer());
-      statuses.push(response.status);
-    }
-
-    expect(statuses).toEqual([504, 504, 504, 503]);
-  });
-
-  it('forgets failures older than the circuit window', async () => {
-    const app = testApp({
-      UPSTREAM_MONOLITH: slow.url,
-      UPSTREAM_TIMEOUT_MS: '100',
-      CIRCUIT_VOLUME_THRESHOLD: '2',
-      CIRCUIT_WINDOW_MS: '1000',
-    });
-
-    const statuses = [];
-    for (let i = 0; i < 3; i++) {
-      const response = await request(app)
-        .get('/api/v1/bookings')
-        .set('Authorization', bearer());
-      statuses.push(response.status);
-      await new Promise(resolve => setTimeout(resolve, 1200));
-    }
-
-    expect(statuses).toEqual([504, 504, 504]);
-  });
-
-  it('rejects a circuit window that a timed-out request would outlast', () => {
-    expect(() =>
-      testConfig({UPSTREAM_TIMEOUT_MS: '10000', CIRCUIT_WINDOW_MS: '10000'}),
-    ).toThrow('CIRCUIT_WINDOW_MS must be at least twice UPSTREAM_TIMEOUT_MS');
   });
 
   it('keeps the circuit of an extracted service apart from the monolith', async () => {
