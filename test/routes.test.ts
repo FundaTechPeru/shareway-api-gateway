@@ -4,14 +4,13 @@ import {matchesPrefix, resolveRoutes} from '../src/routes.js';
 const MONOLITH = 'http://monolith:8080';
 
 describe('resolveRoutes', () => {
-  it('sends the service left in the monolith to the monolith by default', () => {
+  it('no longer sends any service to the monolith', () => {
     const routes = resolveRoutes({}, MONOLITH);
 
-    const inMonolith = routes.filter(route => !route.standalone);
-    expect(inMonolith.map(route => route.service)).toEqual(['booking-pricing']);
-    for (const route of inMonolith) {
-      expect(route.upstream).toBe(MONOLITH);
-      expect(route.extracted).toBe(false);
+    expect(routes.every(route => route.standalone)).toBe(true);
+    for (const route of routes) {
+      expect(route.upstream).toBeUndefined();
+      expect(route.extracted).toBe(true);
     }
   });
 
@@ -33,6 +32,7 @@ describe('resolveRoutes', () => {
     'driver-management',
     'payments-settlement',
     'trip-planning-matching',
+    'booking-pricing',
   ])('never sends %s to the monolith', service => {
     const route = resolveRoutes({}, MONOLITH).find(r => r.service === service);
 

@@ -1,48 +1,10 @@
-# Local environment of the Strangler Fig setup: PostgreSQL, the monolith, the extracted services
-# and the gateway in front on http://localhost:8000. Each one is built from a clone next to this
-# repository (change MONOLITH_CONTEXT, DRIVER_MANAGEMENT_CONTEXT, PAYMENTS_SETTLEMENT_CONTEXT or
-# TRIP_PLANNING_MATCHING_CONTEXT otherwise) and is only reachable through the gateway.
+# Local environment of the Strangler Fig setup: every service has left the monolith, so this file
+# only builds the extracted services and the gateway in front on http://localhost:8000. Each one
+# is built from a clone next to this repository (change DRIVER_MANAGEMENT_CONTEXT,
+# PAYMENTS_SETTLEMENT_CONTEXT, TRIP_PLANNING_MATCHING_CONTEXT or BOOKING_PRICING_CONTEXT
+# otherwise) and is only reachable through the gateway.
 # Copy .env.example to .env and set the secrets before running: docker compose up --build
 services:
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: shareway
-      POSTGRES_USER: ${DB_USER:-shareway}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  monolith:
-    build: ${MONOLITH_CONTEXT:-../shareway-monolith}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      payments-settlement:
-        condition: service_started
-      trip-planning-matching:
-        condition: service_started
-    environment:
-      DB_URL: jdbc:postgresql://postgres:5432/shareway
-      DB_USER: ${DB_USER:-shareway}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
-      DRIVER_MANAGEMENT_URL: http://driver-management:8081
-      PAYMENTS_SETTLEMENT_URL: http://payments-settlement:8085
-      TRIP_PLANNING_MATCHING_URL: http://trip-planning-matching:8081
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      start_period: 60s
-      retries: 10
-
   driver-management-db:
     image: postgres:17-alpine
     environment:
@@ -113,7 +75,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # No authentication of its own: only the gateway and the monolith reach it.
+  # No authentication of its own: only the gateway reaches it.
   trip-planning-matching:
     build: ${TRIP_PLANNING_MATCHING_CONTEXT:-../shareway-trip-planning-matching-service}
     depends_on:
@@ -124,24 +86,49 @@ services:
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-shareway}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
 
+  booking-pricing-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: shareway_booking
+      POSTGRES_USER: ${DB_USER:-shareway}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - booking-pricing-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  booking-pricing:
+    build: ${BOOKING_PRICING_CONTEXT:-../shareway-booking-pricing}
+    depends_on:
+      booking-pricing-db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://booking-pricing-db:5432/shareway_booking
+      DB_USER: ${DB_USER:-shareway}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      SERVER_PORT: 8080
+
   gateway:
     build: .
     depends_on:
-      monolith:
-        condition: service_healthy
       driver-management:
         condition: service_started
       payments-settlement:
         condition: service_started
       trip-planning-matching:
         condition: service_started
+      booking-pricing:
+        condition: service_started
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
-      UPSTREAM_MONOLITH: http://monolith:8080
+      UPSTREAM_MONOLITH: ${UPSTREAM_MONOLITH:-}
       UPSTREAM_DRIVER_MANAGEMENT: ${UPSTREAM_DRIVER_MANAGEMENT:-http://driver-management:8081}
       UPSTREAM_TRIP_PLANNING_MATCHING: ${UPSTREAM_TRIP_PLANNING_MATCHING:-http://trip-planning-matching:8081}
-      UPSTREAM_BOOKING_PRICING: ${UPSTREAM_BOOKING_PRICING:-}
+      UPSTREAM_BOOKING_PRICING: ${UPSTREAM_BOOKING_PRICING:-http://booking-pricing:8080}
       UPSTREAM_PAYMENTS_SETTLEMENT: ${UPSTREAM_PAYMENTS_SETTLEMENT:-http://payments-settlement:8085}
       UPSTREAM_TRIP_EXECUTION: ${UPSTREAM_TRIP_EXECUTION:-}
       UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-10000}
@@ -155,8 +142,8 @@ services:
       - "${GATEWAY_PORT:-8000}:8000"
 
 volumes:
-  postgres-data:
   driver-management-data:
   payments-settlement-data:
   trip-planning-matching-data:
+  booking-pricing-data:
   document-storage:

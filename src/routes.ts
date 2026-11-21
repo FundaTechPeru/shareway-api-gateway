@@ -1,10 +1,11 @@
 /**
  * Route table of the gateway: which path prefixes belong to which service.
  *
- * Strangler Fig: every service of the monolith is served by UPSTREAM_MONOLITH until its own
- * UPSTREAM_* variable points to the extracted service; then its prefixes (and its OpenAPI
- * document) go there without touching the rest. Once a service is removed from the monolith it
- * is marked standalone, like Trip Execution, which never lived there.
+ * Strangler Fig: every service used to be served by UPSTREAM_MONOLITH until its own UPSTREAM_*
+ * variable pointed to the extracted service; then its prefixes (and its OpenAPI document) moved
+ * there without touching the rest. Booking & Pricing was the last one left in the monolith, so
+ * every route is now `standalone`, like Trip Execution, which never lived there, and
+ * UPSTREAM_MONOLITH is no longer read by any of them.
  */
 export type ServiceName =
   | 'driver-management'
@@ -61,8 +62,9 @@ export const ROUTES: readonly ServiceRoute[] = [
     title: 'Booking & Pricing',
     prefixes: ['/api/v1/bookings', '/api/v1/fares', '/api/v1/fare-rules'],
     upstreamEnv: 'UPSTREAM_BOOKING_PRICING',
-    monolithDocsGroup: 'booking',
     docsPath: '/v3/api-docs',
+    // Removed from the monolith: served only by shareway-booking-pricing.
+    standalone: true,
   },
   {
     service: 'payments-settlement',
