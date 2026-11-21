@@ -20,7 +20,7 @@ describe('resilience', () => {
   afterAll(() => slow.close());
 
   it('answers 502 when the upstream cannot be reached', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: await deadUpstreamUrl()});
+    const app = testApp({UPSTREAM_BOOKING_PRICING: await deadUpstreamUrl()});
 
     const response = await request(app)
       .get('/api/v1/bookings')
@@ -32,7 +32,7 @@ describe('resilience', () => {
 
   it('answers 504 when the upstream does not answer in time', async () => {
     const app = testApp({
-      UPSTREAM_MONOLITH: slow.url,
+      UPSTREAM_BOOKING_PRICING: slow.url,
       UPSTREAM_TIMEOUT_MS: '100',
     });
 
@@ -48,7 +48,7 @@ describe('resilience', () => {
 
   it('opens the circuit of the upstream after repeated failures', async () => {
     const app = testApp({
-      UPSTREAM_MONOLITH: await deadUpstreamUrl(),
+      UPSTREAM_BOOKING_PRICING: await deadUpstreamUrl(),
       CIRCUIT_VOLUME_THRESHOLD: '3',
       CIRCUIT_RESET_TIMEOUT_MS: '60000',
     });
@@ -60,7 +60,7 @@ describe('resilience', () => {
         .set('Authorization', bearer());
       statuses.push(response.status);
     }
-    // The monolith serves every path of the context left in it, so its circuit covers all of them.
+    // Every prefix of the service shares its one upstream URL, so its circuit covers all of them.
     const open = await request(app)
       .get('/api/v1/fare-rules')
       .set('Authorization', bearer());
@@ -75,10 +75,10 @@ describe('resilience', () => {
     expect(health.body.services['booking-pricing']).toBe('OPEN');
   });
 
-  it('keeps the circuit of an extracted service apart from the monolith', async () => {
-    const monolith = await startUpstream();
+  it('keeps the circuit of each extracted service apart from the rest', async () => {
+    const booking = await startUpstream();
     const app = testApp({
-      UPSTREAM_MONOLITH: monolith.url,
+      UPSTREAM_BOOKING_PRICING: booking.url,
       UPSTREAM_PAYMENTS_SETTLEMENT: await deadUpstreamUrl(),
       CIRCUIT_VOLUME_THRESHOLD: '2',
     });
@@ -89,7 +89,7 @@ describe('resilience', () => {
     const bookings = await request(app)
       .get('/api/v1/bookings')
       .set('Authorization', bearer());
-    await monolith.close();
+    await booking.close();
 
     expect(bookings.status).toBe(200);
   });
@@ -100,7 +100,7 @@ describe('resilience', () => {
       res.end('{"status":500}');
     });
     const app = testApp({
-      UPSTREAM_MONOLITH: failing.url,
+      UPSTREAM_BOOKING_PRICING: failing.url,
       CIRCUIT_VOLUME_THRESHOLD: '2',
     });
 

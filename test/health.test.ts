@@ -14,7 +14,7 @@ describe('health', () => {
       services: {
         'driver-management': 'CLOSED',
         'trip-planning-matching': 'NOT_CONFIGURED',
-        'booking-pricing': 'CLOSED',
+        'booking-pricing': 'NOT_CONFIGURED',
         'payments-settlement': 'NOT_CONFIGURED',
         'trip-execution': 'NOT_CONFIGURED',
       },

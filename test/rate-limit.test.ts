@@ -9,16 +9,19 @@ import {
 } from './helpers.js';
 
 describe('rate limiting', () => {
-  let monolith: FakeUpstream;
+  let upstream: FakeUpstream;
 
   beforeAll(async () => {
-    monolith = await startUpstream();
+    upstream = await startUpstream();
   });
 
-  afterAll(() => monolith.close());
+  afterAll(() => upstream.close());
 
   function limitedApp() {
-    return testApp({UPSTREAM_MONOLITH: monolith.url, RATE_LIMIT_MAX: '2'});
+    return testApp({
+      UPSTREAM_BOOKING_PRICING: upstream.url,
+      RATE_LIMIT_MAX: '2',
+    });
   }
 
   it('answers 429 once a user spends the quota of the window', async () => {

@@ -15,10 +15,10 @@ describe('authentication', () => {
 
   beforeAll(async () => {
     upstream = await startUpstream();
-    // Driver Management runs on its own; the same fake answers for it and the monolith.
+    // The same fake answers for every service that gets asked.
     app = testApp({
-      UPSTREAM_MONOLITH: upstream.url,
       UPSTREAM_DRIVER_MANAGEMENT: upstream.url,
+      UPSTREAM_BOOKING_PRICING: upstream.url,
     });
   });
 

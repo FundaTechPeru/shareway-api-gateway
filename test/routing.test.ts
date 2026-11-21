@@ -3,27 +3,24 @@ import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {bearer, startUpstream, testApp, type FakeUpstream} from './helpers.js';
 
 describe('routing', () => {
-  let monolith: FakeUpstream;
+  let upstream: FakeUpstream;
   let payments: FakeUpstream;
   let trips: FakeUpstream;
 
   beforeAll(async () => {
-    monolith = await startUpstream();
+    upstream = await startUpstream();
     payments = await startUpstream();
     trips = await startUpstream();
   });
 
   afterAll(async () => {
-    await Promise.all([monolith.close(), payments.close(), trips.close()]);
+    await Promise.all([upstream.close(), payments.close(), trips.close()]);
   });
 
-  describe('with every service in the monolith', () => {
-    it.each([
-      '/api/v1/bookings/42',
-      '/api/v1/fares/quote',
-      '/api/v1/fare-rules',
-    ])('forwards %s to the monolith with the same path', async path => {
-      const app = testApp({UPSTREAM_MONOLITH: monolith.url});
+  it.each(['/api/v1/bookings/42', '/api/v1/fares/quote', '/api/v1/fare-rules'])(
+    'sends %s to booking and pricing with the same path',
+    async path => {
+      const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
 
       const response = await request(app)
         .get(`${path}?page=2`)
@@ -31,30 +28,29 @@ describe('routing', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.url).toBe(`${path}?page=2`);
-    });
+    },
+  );
 
-    it.each([
-      ['/api/v1/trips/42', 'Trip Execution'],
-      ['/api/v1/users/me', 'Driver Management'],
-      ['/api/v1/drivers/me/documents', 'Driver Management'],
-      ['/api/v1/payments/me', 'Payments & Settlement'],
-      ['/api/v1/admin/settlements', 'Payments & Settlement'],
-      ['/api/v1/trip-requests', 'Trip Planning & Matching'],
-      ['/api/v1/driver-availabilities', 'Trip Planning & Matching'],
-    ])('answers 503 for %s while %s is not configured', async (path, title) => {
-      const app = testApp({UPSTREAM_MONOLITH: monolith.url});
-      const before = monolith.received.length;
+  it.each([
+    ['/api/v1/trips/42', 'Trip Execution'],
+    ['/api/v1/users/me', 'Driver Management'],
+    ['/api/v1/drivers/me/documents', 'Driver Management'],
+    ['/api/v1/payments/me', 'Payments & Settlement'],
+    ['/api/v1/admin/settlements', 'Payments & Settlement'],
+    ['/api/v1/trip-requests', 'Trip Planning & Matching'],
+    ['/api/v1/driver-availabilities', 'Trip Planning & Matching'],
+    ['/api/v1/bookings/42', 'Booking & Pricing'],
+    ['/api/v1/fares/quote', 'Booking & Pricing'],
+    ['/api/v1/fare-rules', 'Booking & Pricing'],
+  ])('answers 503 for %s while %s is not configured', async (path, title) => {
+    const response = await request(testApp())
+      .get(path)
+      .set('Authorization', bearer());
 
-      const response = await request(app)
-        .get(path)
-        .set('Authorization', bearer());
-
-      expect(response.status).toBe(503);
-      expect(response.body.message).toBe(
-        `${title} is not configured in the gateway`,
-      );
-      expect(monolith.received).toHaveLength(before);
-    });
+    expect(response.status).toBe(503);
+    expect(response.body.message).toBe(
+      `${title} is not configured in the gateway`,
+    );
   });
 
   it.each([
@@ -62,12 +58,9 @@ describe('routing', () => {
     '/api/v1/users/me',
     '/api/v1/drivers/me/documents',
     '/api/v1/driver-documents/42/review',
-  ])('sends %s to driver management, which left the monolith', async path => {
+  ])('sends %s to driver management', async path => {
     const driverManagement = await startUpstream();
-    const app = testApp({
-      UPSTREAM_MONOLITH: monolith.url,
-      UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url,
-    });
+    const app = testApp({UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url});
 
     const response = await request(app)
       .post(path)
@@ -78,25 +71,24 @@ describe('routing', () => {
     expect(driverManagement.received.map(r => r.url)).toEqual([path]);
   });
 
-  it('sends an extracted service to its own upstream and keeps the rest', async () => {
+  it('sends each extracted service to its own upstream, apart from the rest', async () => {
+    const booking = await startUpstream();
     const app = testApp({
-      UPSTREAM_MONOLITH: monolith.url,
       UPSTREAM_PAYMENTS_SETTLEMENT: payments.url,
+      UPSTREAM_BOOKING_PRICING: booking.url,
     });
 
     await request(app).post('/api/v1/payments').set('Authorization', bearer());
     await request(app).get('/api/v1/bookings').set('Authorization', bearer());
+    await booking.close();
 
     expect(payments.received.map(r => r.url)).toContain('/api/v1/payments');
-    expect(monolith.received.map(r => r.url)).not.toContain('/api/v1/payments');
-    expect(monolith.received.map(r => r.url)).toContain('/api/v1/bookings');
+    expect(booking.received.map(r => r.url)).toContain('/api/v1/bookings');
+    expect(payments.received.map(r => r.url)).not.toContain('/api/v1/bookings');
   });
 
   it('rewrites trips to the routes of trip execution', async () => {
-    const app = testApp({
-      UPSTREAM_MONOLITH: monolith.url,
-      UPSTREAM_TRIP_EXECUTION: trips.url,
-    });
+    const app = testApp({UPSTREAM_TRIP_EXECUTION: trips.url});
 
     const response = await request(app)
       .post('/api/v1/trips/9b2f/iniciar')
@@ -107,7 +99,7 @@ describe('routing', () => {
   });
 
   it('generates an X-Request-Id and sends it upstream and back', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
 
     const response = await request(app)
       .get('/api/v1/bookings')
@@ -120,7 +112,7 @@ describe('routing', () => {
   });
 
   it('keeps the X-Request-Id sent by the client', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
 
     const response = await request(app)
       .get('/api/v1/bookings')
@@ -138,15 +130,15 @@ describe('routing', () => {
     '/dev/events',
     '/dev',
   ])('hides %s with 404 even with a valid token', async path => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
-    const before = monolith.received.length;
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
+    const before = upstream.received.length;
 
     const response = await request(app)
       .post(path)
       .set('Authorization', bearer());
 
     expect(response.status).toBe(404);
-    expect(monolith.received).toHaveLength(before);
+    expect(upstream.received).toHaveLength(before);
   });
 
   it.each([
@@ -155,9 +147,7 @@ describe('routing', () => {
     '/api/v1/payments/%2Finternal',
     '/api/v1//payments',
   ])('rejects the path %s that is not normalized', async path => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
-
-    const response = await request(app)
+    const response = await request(testApp())
       .get(path)
       .set('Authorization', bearer());
 
@@ -167,9 +157,7 @@ describe('routing', () => {
   it.each(['/api/v1/authx', '/api/v1/info', '/'])(
     'answers 404 for %s, which is not in the route table',
     async path => {
-      const app = testApp({UPSTREAM_MONOLITH: monolith.url});
-
-      const response = await request(app)
+      const response = await request(testApp())
         .get(path)
         .set('Authorization', bearer());
 
@@ -179,9 +167,7 @@ describe('routing', () => {
   );
 
   it('adds the security headers of helmet', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
-
-    const response = await request(app).get('/health');
+    const response = await request(testApp()).get('/health');
 
     expect(response.headers['x-content-type-options']).toBe('nosniff');
     expect(response.headers['x-powered-by']).toBeUndefined();

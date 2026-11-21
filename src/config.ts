@@ -7,7 +7,7 @@ export interface GatewayConfig {
   /** URL where clients reach the gateway; the API documents point "Try it out" to it. */
   publicUrl: string;
   jwtSecret: string;
-  /** Base URL of the monolith, the default upstream of every route. */
+  /** Base URL of the monolith. No route reads it anymore now that all of them are standalone. */
   monolithUrl: string;
   /** Route table with the upstream that serves each service right now. */
   routes: ResolvedRoute[];
@@ -25,7 +25,7 @@ export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): GatewayConfig {
   const port = Number(env.PORT ?? 8000);
-  const monolithUrl = required(env, 'UPSTREAM_MONOLITH');
+  const monolithUrl = env.UPSTREAM_MONOLITH ?? '';
   return {
     port,
     publicUrl: env.PUBLIC_URL ?? `http://localhost:${port}`,
