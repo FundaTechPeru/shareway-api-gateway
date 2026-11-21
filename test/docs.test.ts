@@ -25,11 +25,11 @@ function serveDocument(document: object) {
 }
 
 describe('API documentation', () => {
-  let monolith: FakeUpstream;
+  let upstream: FakeUpstream;
   let trips: FakeUpstream;
 
   beforeAll(async () => {
-    monolith = await startUpstream(
+    upstream = await startUpstream(
       serveDocument({
         paths: {
           '/api/v1/bookings': OK,
@@ -51,16 +51,16 @@ describe('API documentation', () => {
   });
 
   afterAll(async () => {
-    await Promise.all([monolith.close(), trips.close()]);
+    await Promise.all([upstream.close(), trips.close()]);
   });
 
-  it('reads the group of a service from the monolith and points it to the gateway', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
+  it('reads the document of an extracted service from the service', async () => {
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
 
     const response = await request(app).get('/v3/api-docs/booking-pricing');
 
     expect(response.status).toBe(200);
-    expect(monolith.received.at(-1)?.url).toBe('/v3/api-docs/booking');
+    expect(upstream.received.at(-1)?.url).toBe('/v3/api-docs');
     expect(response.body.servers).toEqual([
       {url: 'https://api.shareway.test', description: 'ShareWay API gateway'},
     ]);
@@ -70,23 +70,17 @@ describe('API documentation', () => {
     ]);
   });
 
-  it('reads the document of an extracted service from the service', async () => {
-    const app = testApp({
-      UPSTREAM_MONOLITH: await deadUpstreamUrl(),
-      UPSTREAM_PAYMENTS_SETTLEMENT: monolith.url,
-    });
+  it('reads the document of another extracted service from the service', async () => {
+    const app = testApp({UPSTREAM_PAYMENTS_SETTLEMENT: upstream.url});
 
     const response = await request(app).get('/v3/api-docs/payments-settlement');
 
     expect(response.status).toBe(200);
-    expect(monolith.received.at(-1)?.url).toBe('/v3/api-docs');
+    expect(upstream.received.at(-1)?.url).toBe('/v3/api-docs');
   });
 
   it('shows trip execution with the paths of the gateway', async () => {
-    const app = testApp({
-      UPSTREAM_MONOLITH: monolith.url,
-      UPSTREAM_TRIP_EXECUTION: trips.url,
-    });
+    const app = testApp({UPSTREAM_TRIP_EXECUTION: trips.url});
 
     const response = await request(app).get('/v3/api-docs/trip-execution');
 
@@ -98,15 +92,24 @@ describe('API documentation', () => {
   });
 
   it('answers 404 for an unknown service', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
-
-    const response = await request(app).get('/v3/api-docs/unknown');
+    const response = await request(testApp()).get('/v3/api-docs/unknown');
 
     expect(response.status).toBe(404);
   });
 
+  it('answers 503 when the service is not configured', async () => {
+    const response = await request(testApp()).get(
+      '/v3/api-docs/booking-pricing',
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.body.message).toBe(
+      'Booking & Pricing is not configured in the gateway',
+    );
+  });
+
   it('answers 502 when the upstream has no document to give', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: await deadUpstreamUrl()});
+    const app = testApp({UPSTREAM_BOOKING_PRICING: await deadUpstreamUrl()});
 
     const response = await request(app).get('/v3/api-docs/booking-pricing');
 
@@ -117,7 +120,7 @@ describe('API documentation', () => {
   });
 
   it('serves Swagger UI with one entry per service and no token', async () => {
-    const app = testApp({UPSTREAM_MONOLITH: monolith.url});
+    const app = testApp();
 
     const page = await request(app).get('/docs/');
     const init = await request(app).get('/docs/swagger-ui-init.js');
@@ -138,9 +141,7 @@ describe('API documentation', () => {
   it.each(['/swagger-ui.html', '/swagger-ui/index.html'])(
     'redirects %s to /docs',
     async path => {
-      const app = testApp({UPSTREAM_MONOLITH: monolith.url});
-
-      const response = await request(app).get(path);
+      const response = await request(testApp()).get(path);
 
       expect(response.status).toBe(302);
       expect(response.headers.location).toBe('/docs/');
