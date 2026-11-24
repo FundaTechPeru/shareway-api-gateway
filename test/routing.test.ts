@@ -1,6 +1,13 @@
 import request from 'supertest';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {bearer, startUpstream, testApp, type FakeUpstream} from './helpers.js';
+import {
+  bearer,
+  startUpstream,
+  testApp,
+  token,
+  USER_ID,
+  type FakeUpstream,
+} from './helpers.js';
 
 describe('routing', () => {
   let upstream: FakeUpstream;
@@ -121,6 +128,61 @@ describe('routing', () => {
 
     expect(response.headers['x-request-id']).toBe('trace-123');
     expect(response.body.requestId).toBe('trace-123');
+  });
+
+  it('forwards the authenticated user id and role to the upstream', async () => {
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
+
+    const response = await request(app)
+      .get('/api/v1/bookings')
+      .set('Authorization', bearer(token({role: 'ADMIN'})));
+
+    expect(response.status).toBe(200);
+    expect(response.body.userId).toBe(USER_ID);
+    expect(response.body.userRole).toBe('ADMIN');
+  });
+
+  it('sends the user headers to every authenticated service, not only booking', async () => {
+    const driverManagement = await startUpstream();
+    const app = testApp({UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url});
+
+    await request(app)
+      .get('/api/v1/users/me')
+      .set('Authorization', bearer(token({role: 'DRIVER'})));
+    await driverManagement.close();
+
+    const [received] = driverManagement.received;
+    expect(received?.userId).toBe(USER_ID);
+    expect(received?.userRole).toBe('DRIVER');
+  });
+
+  it('overwrites an X-User-Id the client tries to spoof', async () => {
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
+
+    const response = await request(app)
+      .get('/api/v1/bookings')
+      .set('Authorization', bearer(token({role: 'PASSENGER'})))
+      .set('X-User-Id', 'spoofed-id')
+      .set('X-User-Role', 'ADMIN');
+
+    expect(response.body.userId).toBe(USER_ID);
+    expect(response.body.userRole).toBe('PASSENGER');
+  });
+
+  it('drops client X-User-* on public paths with no authenticated user', async () => {
+    const driverManagement = await startUpstream();
+    const app = testApp({UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url});
+
+    await request(app)
+      .post('/api/v1/auth/login')
+      .set('X-User-Id', 'spoofed-id')
+      .set('X-User-Role', 'ADMIN');
+    await driverManagement.close();
+
+    const [received] = driverManagement.received;
+    expect(received).toBeDefined();
+    expect(received?.userId).toBeUndefined();
+    expect(received?.userRole).toBeUndefined();
   });
 
   it.each([
