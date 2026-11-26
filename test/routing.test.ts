@@ -1,6 +1,13 @@
 import request from 'supertest';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {bearer, startUpstream, testApp, type FakeUpstream} from './helpers.js';
+import {
+  bearer,
+  startUpstream,
+  testApp,
+  token,
+  USER_ID,
+  type FakeUpstream,
+} from './helpers.js';
 
 describe('routing', () => {
   let upstream: FakeUpstream;
@@ -98,6 +105,67 @@ describe('routing', () => {
     expect(response.body.url).toBe('/api/viajes/9b2f/iniciar');
   });
 
+  it.each([
+    ['/api/v1/trips/admin', '/api/viajes/admin'],
+    ['/api/v1/trips/9b2f', '/api/viajes/9b2f'],
+    ['/api/v1/trips/9b2f/ruta/optimizar', '/api/viajes/9b2f/ruta/optimizar'],
+    [
+      '/api/v1/trips/9b2f/paradas/cancelar',
+      '/api/viajes/9b2f/paradas/cancelar',
+    ],
+    ['/api/v1/trips/alertas', '/api/viajes/alertas'],
+    ['/api/v1/trips/alertas/42/atender', '/api/viajes/alertas/42/atender'],
+  ])('rewrites %s to %s on trip execution', async (incoming, rewritten) => {
+    const execution = await startUpstream();
+    const app = testApp({UPSTREAM_TRIP_EXECUTION: execution.url});
+
+    const response = await request(app)
+      .post(incoming)
+      .set('Authorization', bearer());
+    await execution.close();
+
+    expect(response.status).toBe(200);
+    expect(execution.received.map(r => r.url)).toEqual([rewritten]);
+  });
+
+  it.each([
+    ['POST', '/api/v1/auth/login'],
+    ['GET', '/api/v1/users'],
+    ['GET', '/api/v1/users/me'],
+    ['GET', '/api/v1/drivers/9b2f/public-profile'],
+    ['GET', '/api/v1/drivers/9b2f/vehicle'],
+    ['POST', '/api/v1/drivers/me/vehicles'],
+    ['GET', '/api/v1/driver-documents'],
+    ['PATCH', '/api/v1/driver-documents/42/review'],
+  ])(
+    'sends %s %s to driver management without rewriting the path',
+    async (method, path) => {
+      const driverManagement = await startUpstream();
+      const app = testApp({UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url});
+
+      const response = await request(app)
+        [method.toLowerCase() as 'get' | 'post' | 'patch'](path)
+        .set('Authorization', bearer(token({role: 'ADMIN'})));
+      await driverManagement.close();
+
+      expect(response.status).toBe(200);
+      expect(driverManagement.received).toHaveLength(1);
+      expect(driverManagement.received[0]?.url).toBe(path);
+      expect(driverManagement.received[0]?.method).toBe(method);
+    },
+  );
+
+  it('forwards the Authorization header untouched to the upstream', async () => {
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
+    const bearerValue = bearer(token({role: 'DRIVER'}));
+
+    await request(app)
+      .get('/api/v1/bookings')
+      .set('Authorization', bearerValue);
+
+    expect(upstream.received.at(-1)?.authorization).toBe(bearerValue);
+  });
+
   it('generates an X-Request-Id and sends it upstream and back', async () => {
     const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
 
@@ -121,6 +189,61 @@ describe('routing', () => {
 
     expect(response.headers['x-request-id']).toBe('trace-123');
     expect(response.body.requestId).toBe('trace-123');
+  });
+
+  it('forwards the authenticated user id and role to the upstream', async () => {
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
+
+    const response = await request(app)
+      .get('/api/v1/bookings')
+      .set('Authorization', bearer(token({role: 'ADMIN'})));
+
+    expect(response.status).toBe(200);
+    expect(response.body.userId).toBe(USER_ID);
+    expect(response.body.userRole).toBe('ADMIN');
+  });
+
+  it('sends the user headers to every authenticated service, not only booking', async () => {
+    const driverManagement = await startUpstream();
+    const app = testApp({UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url});
+
+    await request(app)
+      .get('/api/v1/users/me')
+      .set('Authorization', bearer(token({role: 'DRIVER'})));
+    await driverManagement.close();
+
+    const [received] = driverManagement.received;
+    expect(received?.userId).toBe(USER_ID);
+    expect(received?.userRole).toBe('DRIVER');
+  });
+
+  it('overwrites an X-User-Id the client tries to spoof', async () => {
+    const app = testApp({UPSTREAM_BOOKING_PRICING: upstream.url});
+
+    const response = await request(app)
+      .get('/api/v1/bookings')
+      .set('Authorization', bearer(token({role: 'PASSENGER'})))
+      .set('X-User-Id', 'spoofed-id')
+      .set('X-User-Role', 'ADMIN');
+
+    expect(response.body.userId).toBe(USER_ID);
+    expect(response.body.userRole).toBe('PASSENGER');
+  });
+
+  it('drops client X-User-* on public paths with no authenticated user', async () => {
+    const driverManagement = await startUpstream();
+    const app = testApp({UPSTREAM_DRIVER_MANAGEMENT: driverManagement.url});
+
+    await request(app)
+      .post('/api/v1/auth/login')
+      .set('X-User-Id', 'spoofed-id')
+      .set('X-User-Role', 'ADMIN');
+    await driverManagement.close();
+
+    const [received] = driverManagement.received;
+    expect(received).toBeDefined();
+    expect(received?.userId).toBeUndefined();
+    expect(received?.userRole).toBeUndefined();
   });
 
   it.each([

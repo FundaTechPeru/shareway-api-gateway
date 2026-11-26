@@ -55,6 +55,9 @@ client ─► helmet ─► X-Request-Id ─► request log ─► path guard �
 - **Token.** HS256 tokens issued by Driver Management, checked with the same `JWT_SECRET`; the
   token must carry `sub` (user UUID) and `role`. The `Authorization` header is forwarded as is,
   so the upstream validates the token again.
+- **X-User-Id / X-User-Role.** On an authenticated request the gateway sets these from the
+  validated token, so an upstream can trust the caller without parsing the token itself. They are
+  stripped from the client's request when there is no authenticated user, so they cannot be spoofed.
 - **X-Request-Id.** Kept when the client sends one, generated otherwise; it is forwarded to the
   upstream, returned in the response and used as the id of the log line.
 - **Rate limit.** `RATE_LIMIT_MAX` requests per `RATE_LIMIT_WINDOW_MS`, per user when the request

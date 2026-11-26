@@ -20,7 +20,10 @@ interface Outcome {
 
 /**
  * Forwards the requests of one service to its upstream. Headers go through untouched, the
- * Authorization header included, plus X-Forwarded-* and the X-Request-Id of the gateway.
+ * Authorization header included, plus X-Forwarded-* and the X-Request-Id of the gateway. On an
+ * authenticated request the gateway also sets X-User-Id and X-User-Role from the validated token,
+ * so the upstream can trust who the caller is without parsing the token again; any X-User-* header
+ * coming from the client is dropped when there is no authenticated user, so it cannot be spoofed.
  *
  * Every request runs through the circuit of the upstream. Connection errors and timeouts count as
  * failures; answers of the upstream, 5xx included, do not, since they come from a live service.
@@ -52,7 +55,15 @@ export function proxyRoute(
     xfwd: true,
     pathRewrite: route.pathRewrite,
     on: {
-      proxyReq: proxyReq => {
+      proxyReq: (proxyReq, _req, res) => {
+        const user = (res as Response).locals.user;
+        if (user) {
+          proxyReq.setHeader('X-User-Id', user.id);
+          proxyReq.setHeader('X-User-Role', user.role);
+        } else {
+          proxyReq.removeHeader('X-User-Id');
+          proxyReq.removeHeader('X-User-Role');
+        }
         proxyReq.setTimeout(timeoutMs, () => {
           proxyReq.destroy(
             Object.assign(new Error(`No answer within ${timeoutMs} ms`), {
