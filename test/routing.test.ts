@@ -109,7 +109,10 @@ describe('routing', () => {
     ['/api/v1/trips/admin', '/api/viajes/admin'],
     ['/api/v1/trips/9b2f', '/api/viajes/9b2f'],
     ['/api/v1/trips/9b2f/ruta/optimizar', '/api/viajes/9b2f/ruta/optimizar'],
-    ['/api/v1/trips/9b2f/paradas/cancelar', '/api/viajes/9b2f/paradas/cancelar'],
+    [
+      '/api/v1/trips/9b2f/paradas/cancelar',
+      '/api/viajes/9b2f/paradas/cancelar',
+    ],
     ['/api/v1/trips/alertas', '/api/viajes/alertas'],
     ['/api/v1/trips/alertas/42/atender', '/api/viajes/alertas/42/atender'],
   ])('rewrites %s to %s on trip execution', async (incoming, rewritten) => {
