@@ -19,6 +19,8 @@ export interface ReceivedRequest {
   authorization?: string;
   requestId?: string;
   forwardedFor?: string;
+  userId?: string;
+  userRole?: string;
 }
 
 export interface FakeUpstream {
@@ -39,6 +41,8 @@ export async function startUpstream(handler?: Handler): Promise<FakeUpstream> {
       authorization: req.headers.authorization,
       requestId: header(req, 'x-request-id'),
       forwardedFor: header(req, 'x-forwarded-for'),
+      userId: header(req, 'x-user-id'),
+      userRole: header(req, 'x-user-role'),
     };
     received.push(request);
     if (handler) {
